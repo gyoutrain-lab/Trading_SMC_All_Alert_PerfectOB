@@ -2071,6 +2071,27 @@ async function fdTest(){const o=$('#fdOut'),c=fdCfg();if(!c.tok||!c.id){o.textCo
  $('#src').insertAdjacentHTML('beforebegin','<button id="fdHdr" title="Finex MT5 feed on/off">MT5 ○</button>');
  $('#fdBtn').addEventListener('click',()=>fdSet(!FD.on));$('#fdHdr').addEventListener('click',()=>fdSet(!FD.on));$('#fdTest').addEventListener('click',fdTest);
  fdUi();setInterval(fdUi,3000);if(FD.on)setTimeout(()=>load(true).then(fdUi),1500)}
+  /* ===== REAL / DEMO / STALE indicator ===== */
+(function(){
+  $('#src').insertAdjacentHTML('afterend','<span id="realB" style="padding:4px 12px;border-radius:10px;font-weight:800;font-size:13px;letter-spacing:.4px"></span>');
+  function upd(){
+    const el=$('#realB');if(!el)return;
+    const c=S.candles,lb=c.length?c[c.length-1]:null;
+    let t,bg,fg='#fff';
+    if(S.demo||!lb){t='⛔ DEMO · BUKAN PASAR, ABAIKAN SINYAL';bg='#ef5350'}
+    else if(S.mode==='csv'){t='📄 CSV · DATA HISTORIS';bg='#f5b942';fg='#000'}
+    else{
+      const tf=$('#tf').value,age=Date.now()-lb.t;
+      if(S.closed||age>2.5*TFMS[tf]){t='⚠ STALE / PASAR TUTUP';bg='#f5b942';fg='#000'}
+      else{
+        const s=FD.src||(BN.ok(S.sym)?'Binance Futures (perpetual, bukan spot broker)':'Twelve Data');
+        t='✅ REAL · '+s+(/Deriv/.test(s)?' · tanpa volume':'');bg='#26a69a';
+      }
+    }
+    el.textContent=t;el.style.background=bg;el.style.color=fg;
+  }
+  setInterval(upd,1000);upd();
+})();
 </script>
 </body>
 </html>
