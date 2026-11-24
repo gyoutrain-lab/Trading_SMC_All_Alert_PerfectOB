@@ -303,6 +303,15 @@ body.fsOn{overflow:hidden}
     <div id="riskOut" class="kv" style="margin-top:6px"></div>
   </div>
   <div class="card"><h3>Active Zones</h3><div id="zones" class="zl"></div></div>
+  <div class="card" data-tab="desk"><h3>Broker feed · Finex MT5 (MetaApi, read-only) + Deriv backup</h3>
+    <div class="ctl"><button class="primary" id="fdBtn">MT5 feed: OFF</button><button id="fdTest">Test connection</button><span class="badge" id="fdSt">–</span></div>
+    <div class="row"><span style="width:110px;color:var(--mut)">Feed mode</span><select id="fdMode"><option value="auto">Auto: MT5 → free feeds → Deriv</option><option value="mt5">MT5 only (no fallback)</option><option value="dv">Deriv only</option><option value="free">Free feeds only (original)</option></select></div>
+    <div class="row"><span style="width:110px;color:var(--mut)">MetaApi token</span><input id="fdTok" type="password" placeholder="reader-role token" autocomplete="off"></div>
+    <div class="row"><span style="width:110px;color:var(--mut)">Account ID</span><input id="fdId" autocomplete="off"></div>
+    <div class="row"><span style="width:110px;color:var(--mut)">Region</span><input id="fdReg" placeholder="blank = default · or new-york / london / singapore"></div>
+    <div class="row"><span style="width:110px;color:var(--mut)">Symbol map</span><textarea id="fdMap" rows="2" style="flex:1"></textarea></div>
+    <div id="fdOut" class="hint"></div>
+    <div class="hint">Setup: create a MetaApi account, add your Finex MT5 login with the <b>investor (read-only) password</b>, generate a reader-role token, paste token + account ID, set the symbol map to your exact Finex names, press Test, then the ON button. The token is stored only in this browser. The feed never trades. If MetaApi fails the app falls back by itself. Deriv backup has no volume, so SMC alerts stay off on Deriv data; it only keeps the chart and prices alive.</div></div>
   <div class="card"><h3>Event Log</h3><div id="log"></div></div>
 </aside>
 </main>
@@ -1290,7 +1299,7 @@ async function load(force){
   const tok=S.tok=(S.tok||0)+1;let data,live=false;S.sym=sym;S.cur=sym;S.closed=false;S.cp=null;setSrc('Loading…');
   if(S.mode==='csv'&&S.csv){data=S.csv;setSrc('CSV data')}
   else if(!KEY()){data=demo(tf);setSrc('DEMO · enter Twelve Data key','demo')}
-  else try{data=await td(sym,tf,force,()=>tok!==S.tok);if(tok!==S.tok)return;live=true;const lb=data.lv||data[data.length-1],op=mkt(sym).open,st=op&&Date.now()-lb.t>2.5*TFMS[tf];S.closed=!op||st;setSrc((BN.ok(sym)?'LIVE keyless · Binance/Bybit · ':'Twelve Data · ')+'last bar '+new Date(lb.t).toISOString().slice(5,16).replace('T',' ')+'Z'+(data.stale?' · CACHED: credit limit hit':st?' · STALE DATA':!op?' · MARKET CLOSED':''),S.closed?'demo':'live')}
+  else try{data=await td(sym,tf,force,()=>tok!==S.tok);if(tok!==S.tok)return;live=true;const lb=data.lv||data[data.length-1],op=mkt(sym).open,st=op&&Date.now()-lb.t>2.5*TFMS[tf];S.closed=!op||st;setSrc((FD.src?'LIVE · '+FD.src+' · ':BN.ok(sym)?'LIVE keyless · Binance/Bybit · ':'Twelve Data · ')+'last bar '+new Date(lb.t).toISOString().slice(5,16).replace('T',' ')+'Z'+(data.stale?' · CACHED: credit limit hit':st?' · STALE DATA':!op?' · MARKET CLOSED':''),S.closed?'demo':'live')}
   catch(e){if(tok!==S.tok)return;data=demo(tf);setSrc('DEMO · '+String(e.message).slice(0,60),'demo');log(sym+': '+e.message)}
   S.demo=!live&&!(S.mode==='csv'&&S.csv);
   S.candles=data.lv?data.concat([data.lv]):data;S.A=analyze(data,n);S.htfTrend=null;S.vp=vprofile(data,LB[tf]);S.amd=amd(data,S.A,S.vp);
@@ -1604,7 +1613,7 @@ async function universe(){
   ['XAU/USD','XAG/USD'].forEach(m=>{if(!top.find(x=>x.sym===m)){const x=rows.find(y=>y.sym===m)||{sym:m,act:30,chg:0};top.push(x)}});
   top.forEach(x=>BN.set.add(x.sym));return top}
 async function one(u,ss){
-  const sym=u.sym,n=clamp(+$('#swl').value||5,2,15),d=await td(sym,'15m'),h=await td(sym,'1h'),px=await bnPx(sym).catch(()=>d.px),A=analyze(d,n),ht=analyze(h,n).trend;
+  const sym=u.sym,n=clamp(+$('#swl').value||5,2,15),d=await td(sym,'15m'),h=await td(sym,'1h'),px=(d.src==='MT5'?await mtPx(sym).catch(()=>d.px):d.src?d.px:await bnPx(sym).catch(()=>d.px)),A=analyze(d,n),ht=analyze(h,n).trend;
   S.cur=sym;let sg;try{sg=buildSignal(d,A,ht,px,{sym})}finally{S.cur=null}try{sg.pob=pobEval(d,A,sg,null,sym)}catch(e){}
   const atr=A.atr[d.length-1],cost=INFO(sym,px).spr/atr,pct=atr/px*100,w=d.slice(-30),er=Math.abs(w[w.length-1].c-w[0].c)/(w.slice(1).reduce((a,x,i)=>a+Math.abs(x.c-w[i].c),0)||1),chop=er<.2;
   if(sg.entry!=null&&sg.inZone){try{const ld=await td(sym,'5m'),la=analyze(ld,n),e=la.events[la.events.length-1];sg.conf=!!(e&&e.dir===sg.dir&&e.real&&ld.length-1-e.idx<=12&&ld[e.idx].t>=(sg.tapT||0)-TFMS['15m']/2)}catch(x){}}
@@ -1717,7 +1726,7 @@ $('#adTest').addEventListener('click',()=>{AD.ctx=AD.ctx||new(window.AudioContex
 const LV={ws:null,key:'',fails:0,last:0,rt:null,poll:null,rl:0,thr:0,pan:0,txt:'stream off'};
 function setLv(txt,cls){LV.txt=txt;const b=$('#lvb');if(b){b.textContent='● '+txt;b.className='badge '+(cls||'')}if(PRO.status)PRO.status()}
 function lvStop(){clearTimeout(LV.rt);LV.rt=null;clearInterval(LV.poll);LV.poll=null;if(LV.ws){LV.ws.onopen=LV.ws.onmessage=LV.ws.onerror=LV.ws.onclose=null;try{LV.ws.close()}catch(e){}}LV.ws=null}
-function lvWant(){return S.mode==='live'&&!S.demo&&$('#auto').checked&&BN.ok(S.sym)&&TFMS[$('#tf').value]>=6e4&&S.candles.length>0}
+function lvWant(){return S.mode==='live'&&!S.demo&&$('#auto').checked&&BN.ok(S.sym)&&!FD.src&&TFMS[$('#tf').value]>=6e4&&S.candles.length>0}
 function lvSync(force){
   const key=lvWant()?S.sym+'|'+$('#tf').value:'';
   if(!force&&key===LV.key&&(key===''||LV.ws||LV.poll||LV.rt))return;
@@ -2012,6 +2021,56 @@ function pobInvalid(sym,tf,d){const now=Date.now(),ms=TFMS[tf];let ch=false;
  fi.addEventListener('change',()=>{const f=fi.files[0];if(!f)return;if(v.dataset.u)URL.revokeObjectURL(v.dataset.u);v.dataset.u=URL.createObjectURL(f);v.src=v.dataset.u;$('#pobVd').open=true});
  v.addEventListener('timeupdate',()=>{let k=-1;PV.forEach((q,i)=>{if(v.currentTime>=q[1]-1)k=i});S.pvOn=k;pobMark()});
  $('#pobc').addEventListener('click',e=>{const li=e.target.closest('.pr');if(!li||!v.src)return;v.currentTime=+li.dataset.v;v.play().catch(()=>{});$('#pobVd').open=true})}
+/* ===== BROKER FEED: Finex MT5 via MetaApi (read-only) + Deriv public backup; every failure falls back to the original feeds ===== */
+const FD={mode:store('fdMode')||'auto',on:store('fdOn')==='1',src:'',err:'',lat:0,spr:null,c:new Map()},FDMAP0='XAU/USD=XAUUSD, XAG/USD=XAGUSD, EUR/USD=EURUSD, GBP/USD=GBPUSD, USD/JPY=USDJPY';
+const fdCfg=()=>({tok:(store('fdTok')||'').trim(),id:(store('fdId')||'').trim(),reg:(store('fdReg')||'').trim()||'agiliumtrade'});
+function fdMap(){const m={};(store('fdMap')||FDMAP0).split(/[,\n;]+/).forEach(x=>{const p=x.split('=').map(s=>s.trim());if(p[0]&&p[1])m[p[0].toUpperCase()]=p[1]});return m}
+const mtOn=sym=>FD.on&&FD.mode!=='dv'&&FD.mode!=='free'&&!!fdCfg().tok&&!!fdCfg().id&&!!fdMap()[(sym||'').toUpperCase()];
+async function mtGet(host,path){const c=fdCfg(),ac=new AbortController(),t0=Date.now();setTimeout(()=>ac.abort(),9000);let r,j=null;
+  try{r=await fetch(`https://${host}.${c.reg}.agiliumtrade.ai/users/current/accounts/${encodeURIComponent(c.id)}/${path}`,{headers:{'auth-token':c.tok},signal:ac.signal})}catch(e){throw new Error('MetaApi unreachable (offline, blocked or CORS). Open the file in Chrome, not a preview.')}
+  FD.lat=Date.now()-t0;try{j=await r.json()}catch(e){}
+  if(!r.ok)throw new Error(r.status===401||r.status===403?'MetaApi rejected the token (it must belong to this account)':r.status===404?'MetaApi: account or symbol not found':'MetaApi '+r.status+': '+((j&&j.message)||'error'));return j}
+function fdPack(a,tf,k,src){const lf=a[a.length-1].t+TFMS[tf]>Date.now(),cd=lf?a.slice(0,-1):a;cd.lv=lf?a[a.length-1]:null;cd.px=a[a.length-1].c;cd.stale=false;cd.src=src;FD.c.set(k,{at:Date.now(),d:cd});return cd}
+async function mtTd(sym,tf,force){const m=fdMap()[sym.toUpperCase()],k='mt|'+sym+'|'+tf,c=FD.c.get(k);if(c&&!force&&Date.now()-c.at<4000)return c.d;
+  const j=await mtGet('mt-market-data-client-api-v1',`historical-market-data/symbols/${encodeURIComponent(m)}/timeframes/${tf}/candles?limit=500`);
+  const a=(Array.isArray(j)?j:[]).map(x=>({t:Date.parse(x.time),o:+x.open,h:+x.high,l:+x.low,c:+x.close,v:+(x.tickVolume||x.volume||0)})).filter(x=>x.t>0&&x.c>0).sort((p,q)=>p.t-q.t);
+  if(a.length<60)throw new Error('MetaApi gave only '+a.length+' candles for '+m+' '+tf+' (account not deployed yet, or wrong symbol)');return fdPack(a,tf,k,'MT5')}
+async function mtPx(sym){const m=fdMap()[sym.toUpperCase()],j=await mtGet('mt-client-api-v1',`symbols/${encodeURIComponent(m)}/current-price`);
+  if(!(j&&j.bid>0))throw new Error('MetaApi sent no price');FD.spr=j.ask-j.bid;if(sym===S.sym&&FD.spr>0&&$('#spr'))$('#spr').value=+FD.spr.toPrecision(3);return j.bid}
+const DVE=['wss://api.derivws.com/trading/v1/options/ws/public','wss://ws.binaryws.com/websockets/v3?app_id=1089'],dvSym=s=>/^[A-Z]{3}\/[A-Z]{3}$/.test(s.toUpperCase())?'frx'+s.toUpperCase().replace('/',''):null;
+const dvReq=(u,q)=>new Promise((ok,no)=>{let w;try{w=new WebSocket(u)}catch(e){return no(e)}const t=setTimeout(()=>{try{w.close()}catch(e){}no(new Error('timeout'))},9000);
+  w.onopen=()=>w.send(JSON.stringify(q));w.onerror=()=>{clearTimeout(t);no(new Error('socket'))};
+  w.onmessage=e=>{clearTimeout(t);try{w.close()}catch(x){}let j;try{j=JSON.parse(e.data)}catch(x){return no(x)}j.error?no(new Error(j.error.message||'error')):ok(j)}});
+async function dvTd(sym,tf){const s=dvSym(sym);if(!s)throw new Error('Deriv backup covers forex and metal pairs only');const k='dv|'+sym+'|'+tf,c=FD.c.get(k);if(c&&Date.now()-c.at<8000)return c.d;let er;
+  for(const u of DVE){try{const j=await dvReq(u,{ticks_history:s,adjust_start_time:1,count:500,end:'latest',style:'candles',granularity:TFMS[tf]/1000}),a=(j.candles||[]).map(x=>({t:x.epoch*1000,o:+x.open,h:+x.high,l:+x.low,c:+x.close,v:0}));
+    if(a.length<60)throw new Error('only '+a.length+' candles');return fdPack(a,tf,k,'Deriv')}catch(e){er=e}}throw new Error('Deriv backup failed: '+(er&&er.message))}
+{const _td=td,_lp=livePx;
+ td=async function(sym,tf,force,abort){if(TFMS[tf]<6e4||FD.mode==='free')return _td(sym,tf,force,abort);
+  if(mtOn(sym)){try{const d=await mtTd(sym,tf,force);FD.src='Finex MT5 (MetaApi)';FD.err='';return d}catch(e){FD.err=e.message;if(FD.mode==='mt5')throw e}}
+  else if(FD.mode==='mt5')throw new Error('MT5-only mode: turn the MT5 feed ON and map '+sym+' in the Broker feed card');
+  if(FD.mode==='dv'){const d=await dvTd(sym,tf);FD.src='Deriv (backup)';return d}
+  try{const d=await _td(sym,tf,force,abort);FD.src='';return d}catch(e){try{const d=await dvTd(sym,tf);FD.src='Deriv (backup)';return d}catch(x){throw e}}};
+ livePx=async function(sym){if(mtOn(sym)){try{return await mtPx(sym)}catch(e){FD.err=e.message}}return _lp(sym)}}
+let mtBusy=false,mtBack=0;
+bgInterval(async()=>{if(mtBusy||Date.now()<mtBack||!mtOn(S.sym)||!/^Finex/.test(FD.src)||S.demo||!S.A||!S.sig||!$('#auto').checked||S.mode!=='live')return;mtBusy=true;
+  try{const p=await mtPx(S.sym),cd=S.candles.slice(0,S.A.atr.length);if(S.candles.length>cd.length){const l=S.candles[S.candles.length-1];l.c=p;l.h=Math.max(l.h,p);l.l=Math.min(l.l,p)}
+    const old=S.sig;S.sig=buildSignal(cd,S.A,S.htfTrend,p,{sym:S.sym});S.sig.conf=old.conf;renderPanel();draw();const e=$('#px');if(e)e.textContent=fmt(p,S.sym);FD.err=''}
+  catch(e){FD.err=e.message;mtBack=Date.now()+15000}finally{mtBusy=false}},3000);
+function fdUi(){$('#fdBtn').textContent='MT5 feed: '+(FD.on?'ON':'OFF');$('#fdBtn').classList.toggle('primary',FD.on);$('#fdHdr').textContent='MT5 '+(FD.on?'●':'○');
+  const el=$('#fdSt');let t,cl='';if(!FD.on)t='MT5 off · feed: '+(FD.src||'free feeds');else if(FD.err){t='MT5 error: '+FD.err.slice(0,80);cl='warn'}else if(FD.src)t='● '+FD.src+' · '+FD.lat+' ms'+(FD.spr?' · spread '+(+FD.spr.toPrecision(3)):'');else t='MT5 on · waiting for the first load';el.textContent=t;el.className='badge '+cl}
+function fdSet(v){const c=fdCfg();if(v&&(!c.tok||!c.id)){FD.on=false;store('fdOn','0');fdUi();$('#fdOut').textContent='Enter the MetaApi token and account ID first, then press the button again.';return}
+  FD.on=v;store('fdOn',v?'1':'0');FD.err='';FD.c.clear();fdUi();try{lvSync(true)}catch(e){}load(true).then(fdUi)}
+async function fdTest(){const o=$('#fdOut'),c=fdCfg();if(!c.tok||!c.id){o.textContent='Enter the MetaApi token and account ID first.';return}o.textContent='Testing…';const L=[];
+  try{const a=await mtGet('mt-client-api-v1','account-information');L.push('✓ account connected: '+esc((a.broker||'')+' · '+(a.server||'')));
+    const s0=Object.entries(fdMap())[0],p=await mtGet('mt-client-api-v1',`symbols/${encodeURIComponent(s0[1])}/current-price`);L.push(`✓ ${esc(s0[1])} bid ${p.bid} ask ${p.ask} · spread ${+(p.ask-p.bid).toPrecision(3)} · ${FD.lat} ms`);
+    const d=await mtTd(s0[0],'5m',true);L.push('✓ '+d.length+' × 5m candles, last '+new Date((d.lv||d[d.length-1]).t).toISOString().slice(5,16).replace('T',' ')+'Z')}catch(e){L.push('✗ '+esc(e.message))}
+  o.innerHTML=L.join('<br>')}
+{const sv=(id,k)=>{const e=$('#'+id);e.value=store(k)||(k==='fdMap'?FDMAP0:'');e.addEventListener('input',()=>{store(k,e.value.trim());FD.c.clear()});e.addEventListener('change',()=>fdUi())};
+ sv('fdTok','fdTok');sv('fdId','fdId');sv('fdReg','fdReg');sv('fdMap','fdMap');
+ $('#fdMode').value=FD.mode;$('#fdMode').addEventListener('change',()=>{FD.mode=$('#fdMode').value;store('fdMode',FD.mode);FD.c.clear();FD.src='';try{lvSync(true)}catch(e){}load(true).then(fdUi)});
+ $('#src').insertAdjacentHTML('beforebegin','<button id="fdHdr" title="Finex MT5 feed on/off">MT5 ○</button>');
+ $('#fdBtn').addEventListener('click',()=>fdSet(!FD.on));$('#fdHdr').addEventListener('click',()=>fdSet(!FD.on));$('#fdTest').addEventListener('click',fdTest);
+ fdUi();setInterval(fdUi,3000);if(FD.on)setTimeout(()=>load(true).then(fdUi),1500)}
 </script>
 </body>
 </html>
