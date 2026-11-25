@@ -946,7 +946,7 @@ function buildSignal(c,A,htfTrend,px,opt){
     const pocOK=d>0?entry<=vp.poc+.25*a:entry>=vp.poc-.25*a,amOK=am.ph==='Accumulation'?false:(am.ph==='Trending'?A.trend===d:am.dir===d);
     out.grade=pick.score>=7&&htfTrend===d&&out.rr>=2&&out.cr<=.1&&pocOK&&(!metal||amOK)?'A':pick.score>=6?'B':'C';
     if(out.cr>.15){out.status='NO TRADE';out.sub='Spread+slippage is '+Math.round(out.cr*100)+'% of the stop distance: costs would eat the edge';out.entry=null}
-    else if(metal&&(c[1].t-c[0].t)<9e5&&!(K&&!K.pend&&K.dir===out.dir)){out.status='NO TRADE';out.sub='Gold/Silver: below 15m the spread and noise burn small stops. Use 15m or higher';out.entry=null}
+    else if(metal&&(c[1].t-c[0].t)<9e5&&!(K&&!K.pend&&K.dir===out.dir)&&!(window.LTFMET&&LTFMET())){out.status='NO TRADE';out.sub='Gold/Silver: below 15m the spread and noise burn small stops. Use 15m or higher';out.entry=null}
     else if(!opt.bt&&M&&moveBlock(M,d,K)){out.status='NO TRADE';out.sub='Candle movement ('+M.tf+'): '+moveBlock(M,d,K);out.entry=null;out.watch=true;out.failed='Candle movement'}
     else if(vonly&&!opt.bt&&!out.verified){out.status='NO TRADE';out.sub='Not verified, possible fake. Failed: '+out.failed;out.entry=null;out.watch=true}
     else if(($('#sniper').checked||metal)&&!opt.bt&&out.grade!=='A'){out.status='NO TRADE';out.sub='Grade '+out.grade+': needs score ≥7, HTF aligned, entry on the correct side of the POC'+(metal?', a clear AMD phase':'')+', R:R ≥ 2';out.entry=null;out.watch=true;out.failed='grade '+out.grade+' (needs A)'}
@@ -1398,7 +1398,7 @@ async function scan0(){
   S.cur=null;
   const top=S.scan.filter(r=>!r.err&&r.sg.entry!=null);
   $('#prog').textContent=S.stop?'stopped':`done · ${top.length} setup(s)`+(useH?'':' (no HTF check)');
-  if(top.length){const b=top.sort((a,b)=>b.sg.score-a.sg.score)[0];log(`Screener ${STYLE[st]}: best ${b.sym} ${b.sg.status} @ ${fmt(b.sg.entry,b.sym)}`);notify(`${b.sym} ${b.sg.status}`)}
+  if(top.length){const b=top.sort((a,b)=>b.sg.score-a.sg.score)[0];log(`Screener ${STYLE[st]}: best ${b.sym} ${b.sg.status} @ ${fmt(b.sg.entry,b.sym)}`);0}
 }
 async function scan(){if(S.scanBusy)return;S.scanBusy=true;try{await scan0()}finally{S.scanBusy=false}}
 function useCr(k){const day=new Date().toISOString().slice(0,10);let o={};try{o=JSON.parse(localStorage.getItem('tdcr')||'{}')}catch(e){}if(o.d!==day||o.k!==KFP())o={d:day,n:0,k:KFP()};o.n+=k;try{localStorage.setItem('tdcr',JSON.stringify(o))}catch(e){}$('#cr').textContent='credits today ≈ '+o.n+'/'+CRL()+' · r9'+(LIMHIT()?' · LIMIT HIT: using cache':'');return o.n}
@@ -1643,17 +1643,17 @@ async function run(){
       let vd={t:'checking',s:''};try{vd=verdict(S.sig)}catch(e){}
       const fin=S.sym===r.sym&&S.sig&&S.sig.entry!=null&&S.sig.dir===g.dir&&/^ENTRY POINT/.test(vd.t);
       if(fin&&!AD.sent[base+'E']){AD.sent[base+'E']=Date.now();AD.sent[lk]=Date.now();svS();alarm(`${r.sym} 15m ${dr} ENTRY${g.pob&&g.pob.score===5?' PERFECT OB 5/5':''}. The main panel says ${vd.t.replace(/ ·.*/,'')}. Entry ${fmt(p.entry,r.sym)}. ${sl}`,'ENTRY')}
-      else if(!fin&&!g.inZone&&g.dist<=1.5&&!AD.sent[base+'P']){AD.sent[base+'P']=Date.now();AD.sent[lk]=Date.now();svS();alarm(`${r.sym} 15m ${dr} setup is approaching ${fmt(p.entry,r.sym)}. Not an entry yet. ${sl}`,'PRE')}
+      else if(store('rdPre')==='1'&&!fin&&!g.inZone&&g.dist<=1.5&&!AD.sent[base+'P']){AD.sent[base+'P']=Date.now();AD.sent[lk]=Date.now();svS();alarm(`${r.sym} 15m ${dr} setup is approaching ${fmt(p.entry,r.sym)}. Not an entry yet. ${sl}`,'PRE')}
       $('#adBody').insertAdjacentHTML('beforeend',`<div class="hint">Final check (same as the main panel) for ${r.sym}: <b>${esc(vd.t)}</b> ${esc((vd.s||'').slice(0,170))}</div>`)}
   }finally{AD.busy=false;AD.last=Date.now()}}
 $('#adBody').addEventListener('click',e=>{const t=e.target.closest('tr[data-s]');if(t){$('#sym').value=t.dataset.s;$('#tf').value='15m';$('#go').click()}});
 async function wake(){try{AD.wl=await navigator.wakeLock.request('screen')}catch(e){}}
 document.addEventListener('visibilitychange',()=>{if(AD.on&&document.visibilityState==='visible')wake()});
 /* ===== TIMEFRAME EARLY-ENTRY ALERTS: SMC or CRT on any timeframe, one distinct sound per timeframe ===== */
-const TFA=['1m','5m','15m','1h','4h','1d'],TSND={'1m':{n:[2000],d:.09,w:'sine'},'5m':{n:[1500,1500],d:.11,w:'sine'},'15m':{n:[1100,1100,1100],d:.14,w:'square'},'1h':{n:[700,880,1050,1320],d:.17,w:'triangle'},'4h':{n:[520,390],d:.5,w:'sawtooth'},'1d':{n:[330,415,494,659],d:.38,w:'sawtooth'}};
+const TFA=['30s','1m','5m','15m','1h','4h','1d'],TSND={'30s':{n:[2600],d:.06,w:'sine'},'1m':{n:[2000],d:.09,w:'sine'},'5m':{n:[1500,1500],d:.11,w:'sine'},'15m':{n:[1100,1100,1100],d:.14,w:'square'},'1h':{n:[700,880,1050,1320],d:.17,w:'triangle'},'4h':{n:[520,390],d:.5,w:'sawtooth'},'1d':{n:[330,415,494,659],d:.38,w:'sawtooth'}};
 AD.ts={};try{AD.ts=JSON.parse(store('adTfSent')||'{}')}catch(e){}
 function svT(){const o={},n=Date.now();for(const k in AD.ts)if(n-AD.ts[k]<864e5)o[k]=AD.ts[k];AD.ts=o;store('adTfSent',JSON.stringify(o))}
-const tfSel=()=>(store('adTf')||'5m,15m,1h,4h').split(',').filter(x=>TSND[x]);
+const tfSel=()=>(store('adTf')||'30s,1m,5m,15m').split(',').filter(x=>TSND[x]);
 $('#adOn').parentNode.insertAdjacentHTML('beforebegin',`<div class="ckh" style="margin-top:10px">Timeframe alerts · early entry only (SMC or CRT)</div>
 <div class="kv" style="margin-top:6px"><div>Watch symbols</div><div><input id="adTs" style="width:170px" placeholder="Auto (best now)"></div></div>
 <div id="adTfs" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">${TFA.map(t=>`<label class="chk"><input type="checkbox" data-tf="${t}"> ${t}</label>`).join('')}</div>
@@ -1668,51 +1668,51 @@ function tfBeep(tf,dir){const c=TSND[tf];if(!c)return 0;try{const a=AD.ctx||(AD.
   try{navigator.vibrate&&navigator.vibrate(Array.from({length:TFA.indexOf(tf)+1},()=>[200,100]).flat())}catch(e){}
   return c.n.length*(c.d+.05)*1000}
 $('#adTt').addEventListener('click',e=>{const tf=e.target.dataset.tt;if(!tf)return;const ms=tfBeep(tf,1);setTimeout(()=>tfBeep(tf,-1),ms+400)});
-function tfAlert(tf,dir,kind,msg){if(PRO.snoozed()){PRO.hist('SMC '+tf+' early '+kind+' (snoozed)',msg);return}
+function tfAlert(tf,dir,kind,msg){if(PRO.snoozed()){PRO.hist('SMC '+tf+' READY '+kind+' (snoozed)',msg);return}
   tfBeep(tf,dir);
   try{speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(msg))}catch(e){}
-  pushOut('SMC '+tf+' early '+kind,msg,4,'eyes');
+  pushOut('SMC '+tf+' READY '+kind,msg,4,'eyes');
   const w=$('#adWa'),s=$('#adSms');w.href='https://wa.me/'+wa()+'?text='+encodeURIComponent(msg);s.href='sms:+'+wa()+'?body='+encodeURIComponent(msg);w.style.display=s.style.display='';
-  log('EARLY '+tf+' '+kind+': '+msg)}
-const FXP=['XAU/USD','XAG/USD','EUR/USD','GBP/USD','USD/JPY','AUD/USD','USD/CAD','USD/CHF','NZD/USD','EUR/JPY','GBP/JPY','EUR/GBP','AUD/JPY','EUR/AUD'];
+  log('READY '+tf+' '+kind+': '+msg)}
+window.tfAlert=tfAlert;window.svT=svT;const FXP=['XAU/USD','XAG/USD','EUR/USD','GBP/USD','USD/JPY','AUD/USD','USD/CAD','USD/CHF','NZD/USD','EUR/JPY','GBP/JPY','EUR/GBP','AUD/JPY','EUR/AUD'];
 function sessCur(){const n=new Date(),h=n.getUTCHours()+n.getUTCMinutes()/60,c=[];if(h>=22||h<7)c.push('JPY','AUD','NZD');if(h>=7&&h<16)c.push('EUR','GBP','CHF');if(h>=12&&h<21)c.push('USD','CAD','EUR','GBP');return c}
 async function autoPick(n){
   if(AD.auto&&Date.now()-AD.auto.at<9e5)return AD.auto.list;
-  const h=new Date().getUTCHours(),cur=sessCur(),cand=FXP.filter(s=>mkt(s).open&&(/^XA[UG]/.test(s)?h>=7&&h<17:(BN.ok(s)||!!TDK())&&s.split('/').some(x=>cur.includes(x)))),sc=[];
+  const h=new Date().getUTCHours(),cur=sessCur(),cand=FXP.filter(s=>mkt(s).open&&(/^XA[UG]/.test(s)?h>=7&&h<17:(BN.ok(s)||!!TDK()||lvRoute(s)!=='none')&&s.split('/').some(x=>cur.includes(x)))),sc=[];
   for(const s of cand){try{const d=await td(s,'1h'),A=analyze(d,n),L=d.length,a=A.atr[L-1],px=d.px!=null?d.px:d[L-1].c,e=envChk(d,A,L),cost=INFO(s,px).spr/a;
     if(cost<=.2&&e.er>=.2&&e.ratio>=.6&&e.ratio<=1.8)sc.push({s,v:Math.min(e.er/.45,1)*50+(1-Math.min(cost*5,1))*30+Math.min(e.ratio,1.4)/1.4*20})}catch(x){}}
-  sc.sort((x,y)=>y.v-x.v);AD.auto={at:Date.now(),list:sc.slice(0,4).map(x=>x.s),cand:cand.length};return AD.auto.list}
+  sc.sort((x,y)=>y.v-x.v);AD.auto={at:Date.now(),list:sc.slice(0,6).map(x=>x.s),cand:cand.length};return AD.auto.list}
 const hintAuto=()=>AD.auto?`<div class="hint">Auto watchlist (${AD.auto.cand} open markets checked, refreshed every 15 min): <b>${AD.auto.list.join(', ')||'none passes the spread / trend filter right now'}</b>${TDK()?'':' · add a Twelve Data key to include forex'}</div>`:'';
 async function tfRun(){
   if(AD.tb)return;AD.tb=true;
   const n=clamp(+$('#swl').value||5,2,15),sel=tfSel(),rows=[];let syms=[],auto=false;
   try{
-    {const m=($('#adTs').value||'').trim();auto=!m||/^auto$/i.test(m);syms=auto?await autoPick(n):m.split(/[\s,;]+/).filter(Boolean).map(x=>x.toUpperCase()).slice(0,4)}
-    for(const sym of syms)for(const tf of sel){
+    {const m=($('#adTs').value||'').trim();auto=!m||/^auto$/i.test(m);syms=auto?await autoPick(n):m.split(/[\s,;]+/).filter(Boolean).map(x=>x.toUpperCase()).slice(0,8)}
+    for(const sym of syms)for(const tf of sel){if(!tfDue(sym,tf)){rows.push((AD.rowc&&AD.rowc[sym+'|'+tf])||'');continue}
       let st='no setup',cls='';
       try{
-        if(TFMS[tf]<9e5&&!BN.ok(sym))throw new Error('skipped below 15m (saves API credits)');
+        if(TFMS[tf]<9e5&&!freeSym(sym))throw new Error('below 15m needs a free feed (MT5 / Deriv / Binance)');
         const d=await td(sym,tf),A=analyze(d,n);let ht=null;
         try{if(HTF[tf]&&TFMS[HTF[tf]]>=6e4)ht=analyze(await td(sym,HTF[tf]),n).trend}catch(e){}
         const px=d.px!=null?d.px:d[d.length-1].c,L=d.length,f=x=>fmt(x,sym),a=A.atr[L-1],bs=[S.M,S.K,S.cur,S.demo];let sg,K;
         S.cur=sym;S.demo=false;try{sg=buildSignal(d,A,ht,px,{sym});K=crtFor(d,{sym,bt:true})}finally{S.M=bs[0];S.K=bs[1];S.cur=bs[2];S.demo=bs[3]}
         const nm=sym.replace('/',' '),hit=[],pb=pobEval(d,A,sg,K,sym),lv=pobLive(d,tf,sym);pobSet(sym,tf,pb,lv);pobInvalid(sym,tf,d);
-        if(lv&&sg.entry!=null&&sg.verified&&(sg.inZone||sg.dist<=2)&&pobGate(pb))hit.push({kind:'SMC',dir:sg.dir,key:`${sym}|${tf}|SMC|${sg.dir}|${f(sg.entry)}`,
-          txt:`${nm} ${tf} ${sg.dir>0?'BUY':'SELL'} early entry, ${pb&&pb.score===5?'PERFECT OB 5/5':'SMC'}${pb&&pb.crt?' + CRT':''}. Zone ${f(sg.entry)}${sg.inZone?', price is in the zone':', '+sg.dist.toFixed(1)+' ATR away'}. SL ${f(sg.sl)}, TP1 ${f(sg.tp1)}. Wait for the reaction candle.`});
-        if(lv&&K&&!K.pend&&L-1-K.sw<=12&&(K.dir>0?(px<K.mid&&px>K.ext):(px>K.mid&&px<K.ext))){
+        {const gt=rdy({sym,tf,d,A,sg,pb,lv,ht,px});if(gt.ok)hit.push({kind:'SMC',dir:sg.dir,key:`${sym}|${tf}|SMC|${sg.dir}|${f(sg.entry)}`,txt:gt.txt,entry:gt.entry,sl:gt.sl,tp1:gt.tp1})}
+        if(lv&&K&&!K.pend&&ht===K.dir&&tickChk(sym)&&(K.dir>0?d[L-1].c>d[L-1].o:d[L-1].c<d[L-1].o)&&L-1-K.sw<=12&&(K.dir>0?(px<K.mid&&px>K.ext):(px>K.mid&&px<K.ext))){
           const risk=Math.abs(px-K.ext)+.25*a,rr=Math.abs(K.mid-px)/risk;
-          if(rr>=1.2&&INFO(sym,px).spr*1.2/risk<=.15)hit.push({kind:'CRT',dir:K.dir,key:`${sym}|${tf}|CRT|${K.dir}|${K.hi}|${K.lo}`,
-            txt:`${nm} ${tf} ${K.dir>0?'BUY':'SELL'} early entry, CRT${pb&&pb.d===K.dir&&pb.score>=4?' + OB '+pb.score+'/5':''}. ${K.dir>0?'Low':'High'} swept, range ${f(K.lo)} to ${f(K.hi)} reclaimed. SL beyond ${f(K.ext)}, TP1 ${f(K.mid)}, TP2 ${f(K.tgt)} (${rr.toFixed(1)}R to TP1). Confirm with a lower timeframe CHoCH.`})}
+          if(rr>=1.5&&INFO(sym,px).spr*1.2/risk<=.15)hit.push({kind:'CRT',dir:K.dir,key:`${sym}|${tf}|CRT|${K.dir}|${K.hi}|${K.lo}`,entry:px,sl:K.ext,tp1:K.mid,
+            txt:`${nm} ${tf} ${K.dir>0?'BUY':'SELL'} ENTRY READY, CRT${pb&&pb.d===K.dir&&pb.score>=4?' + OB '+pb.score+'/5':''}. ${K.dir>0?'Low':'High'} swept, range ${f(K.lo)} to ${f(K.hi)} reclaimed. SL beyond ${f(K.ext)}, TP1 ${f(K.mid)}, TP2 ${f(K.tgt)} (${rr.toFixed(1)}R to TP1). Reclaim confirmed by the last closed candle, HTF aligned.`})}
+        if(window.rdBigOn&&rdBigOn()){const bm=bigMove(d,A,sym,tf,ht,px);if(bm&&bm.ok)hit.push(bm)}
         if(hit.length){st=hit.map(h=>(h.dir>0?'BUY ':'SELL ')+h.kind).join(' + ');cls=hit[0].dir>0?'up':'dn';
-          hit.filter(h=>!AD.ts[h.key]).forEach(h=>{AD.ts[h.key]=Date.now();svT();tfAlert(tf,h.dir,h.kind,h.txt);pobTrack(sym,tf,h,pb,K);st+=' · alerted'})}
+          hit.filter(h=>!AD.ts[h.key]&&dbnOK(h.key,holdMs(tf))).forEach(h=>{AD.ts[h.key]=Date.now();svT();tfAlert(tf,h.dir,h.kind,h.txt);rdyReg(h,sym,tf);pobTrack(sym,tf,h,pb,K);st+=' · alerted'})}else if(window.RDW&&RDW[sym+'|'+tf]){st='wait · '+RDW[sym+'|'+tf];cls='warn'}
       }catch(e){st=String(e.message).slice(0,50);cls='warn'}
-      rows.push(`<tr><td>${sym}</td><td>${tf}</td><td class="${cls}">${esc(st)}</td></tr>`)}
+      {const hh=`<tr><td>${sym}</td><td>${tf}</td><td class="${cls}">${esc(st)}</td></tr>`;(AD.rowc=AD.rowc||{})[sym+'|'+tf]=hh;rows.push(hh)}}
     $('#adTl').innerHTML=(auto?hintAuto():'')+(rows.length?`<table><thead><tr><th>Symbol</th><th>TF</th><th>Early entry (${new Date().toLocaleTimeString()})</th></tr></thead><tbody>${rows.join('')}</tbody></table>`:(sel.length?'':'<div class="hint">Tick at least one timeframe.</div>'))
   }finally{AD.tb=false;try{pobBoard()}catch(e){}}}
 function setOn(v){
   AD.on=v;$('#adOn').textContent=v?'Stop alerts':'Start alerts';store('adOn',v?'1':'0');
   bgClear(AD.t);bgClear(AD.t2);
-  if(v){AD.ctx=AD.ctx||new(window.AudioContext||window.webkitAudioContext)();AD.ctx.resume();wake();run();AD.t=bgInterval(run,30000);tfRun();AD.t2=bgInterval(tfRun,30000)}
+  if(v){AD.ctx=AD.ctx||new(window.AudioContext||window.webkitAudioContext)();AD.ctx.resume();wake();run();AD.t=bgInterval(run,30000);tfRun();AD.t2=bgInterval(tfRun,3000)}
   else{try{AD.wl&&AD.wl.release()}catch(e){}}
   if(PRO.status)PRO.status();
 }
@@ -2102,8 +2102,10 @@ async function fdTest(){const o=$('#fdOut'),c=fdCfg();if(!c.tok||!c.id){o.textCo
 (function(){
 const LV2=window.LV2={tk:{},ws:null,ei:0,fails:0,sig:'',rt:null,bb:0,mb:0,lastTick:0,recalc:0,rebuiltAt:0,rf:{},open:false};
 const lst=()=>[...new Set(($('#wl').value||'').split(/[\s,]+/).filter(Boolean).map(s=>s.toUpperCase()))];
+const subs=()=>[...new Set([...lst(),...(LV2.extra||[]),...(($('#adTs')&&$('#adTs').value)||'').split(/[\s,;]+/).filter(x=>/\//.test(x)).map(x=>x.toUpperCase())])];
 const route=s=>mtOn(s)?'mt5':BN.ok(s)?'bn':dvSym(s)?'dv':'none';
 const freeSym=s=>!TDK()||mtOn(s)||BN.ok(s)||FD.mode==='dv';
+window.lvRoute=route;window.freeSym=freeSym;window.lvWatch=s=>{s=(s||'').toUpperCase();(LV2.extra=LV2.extra||new Set()).add(s)};
 window.lvPx=(s,max)=>{const k=LV2.tk[(s||'').toUpperCase()];return k&&Date.now()-k.at<(max||15000)?k.p:0};
 window.lvCell=s=>{if(!mkt(s).open)return'<span class="warn">CLOSED</span>';const k=LV2.tk[s];if(!k)return'<span class="warn">no tick</span>';const a=(Date.now()-k.at)/1000;
   return fmt(k.p,s)+'<br><small class="'+(a>15?'warn':'up')+'">'+(a<1.5?'live':a.toFixed(0)+'s ago')+' · '+k.src+'</small>'};
@@ -2113,25 +2115,25 @@ function dvClose(){const w=LV2.ws;LV2.ws=null;LV2.open=false;if(w){try{w.onclose
 function dvFail(){LV2.fails++;LV2.ei++;clearTimeout(LV2.rt);LV2.rt=setTimeout(()=>{LV2.rt=null;dvOpen()},Math.min(1000*Math.pow(2,LV2.fails-1),15000))}
 function dvOpen(){
   if(LV2.ws||LV2.rt)return;
-  const ss=lst().filter(s=>route(s)==='dv');LV2.sig=lst().join(',');if(!ss.length)return;
+  const ss=subs().filter(s=>route(s)==='dv');LV2.sig=subs().join(',');if(!ss.length)return;
   const back={};ss.forEach(s=>back[dvSym(s)]=s);
   let w;try{w=new WebSocket(DVE[LV2.ei%DVE.length])}catch(e){return dvFail()}
   LV2.ws=w;LV2.wsAt=Date.now();
   w.onopen=()=>{if(LV2.ws!==w)return;LV2.open=true;LV2.fails=0;ss.forEach(s=>{try{w.send(JSON.stringify({ticks:dvSym(s),subscribe:1}))}catch(e){}})};
   w.onmessage=m=>{if(LV2.ws!==w)return;let j;try{j=JSON.parse(m.data)}catch(e){return}const t=j.tick;
-    if(t&&t.symbol&&back[t.symbol]&&+t.quote>0){const n=Date.now();LV2.tk[back[t.symbol]]={p:+t.quote,t:(t.epoch||0)*1000,at:n,src:'Deriv WS'};LV2.lastTick=n}};
+    if(t&&t.symbol&&back[t.symbol]&&+t.quote>0){const n=Date.now();LV2.tk[back[t.symbol]]={p:+t.quote,t:(t.epoch||0)*1000,at:n,src:'Deriv WS'};LV2.lastTick=n;window.tkmAdd&&tkmAdd(back[t.symbol],+t.quote,n)}};
   w.onerror=()=>{try{w.close()}catch(e){}};
   w.onclose=()=>{if(LV2.ws===w){LV2.ws=null;LV2.open=false;dvFail()}};
 }
 /* --- tick source 2: Binance Futures (XAU, XAG, XPT, BTC, ETH): one request for all prices, every second --- */
-async function bnPoll(){const ss=lst().filter(s=>route(s)==='bn');if(!ss.length||LV2.bb)return;LV2.bb=1;
+async function bnPoll(){const ss=subs().filter(s=>route(s)==='bn');if(!ss.length||LV2.bb)return;LV2.bb=1;
   try{const j=await _J('https://fapi.binance.com/fapi/v1/ticker/price'),m={};j.forEach(x=>m[x.symbol]=+x.price);
-    ss.forEach(s=>{const p=m[BN.m(s)];if(p>0){const n=Date.now();LV2.tk[s]={p,t:n,at:n,src:'Binance'};LV2.lastTick=n}})}
-  catch(e){for(const s of ss){try{const p=await bnPx(s);if(p>0){const n=Date.now();LV2.tk[s]={p,t:n,at:n,src:'Binance'};LV2.lastTick=n}}catch(x){}}}
+    ss.forEach(s=>{const p=m[BN.m(s)];if(p>0){const n=Date.now();LV2.tk[s]={p,t:n,at:n,src:'Binance'};LV2.lastTick=n;window.tkmAdd&&tkmAdd(s,p,n)}})}
+  catch(e){for(const s of ss){try{const p=await bnPx(s);if(p>0){const n=Date.now();LV2.tk[s]={p,t:n,at:n,src:'Binance'};LV2.lastTick=n;window.tkmAdd&&tkmAdd(s,p,n)}}catch(x){}}}
   finally{LV2.bb=0}}
 /* --- tick source 3: Finex MT5 via MetaApi (broker bid, highest priority when configured) --- */
-async function mtPoll(){const ss=lst().filter(s=>route(s)==='mt5');if(!ss.length||LV2.mb)return;LV2.mb=1;
-  try{await Promise.all(ss.map(async s=>{try{const p=await mtPx(s);if(p>0){const n=Date.now();LV2.tk[s]={p,t:n,at:n,src:'MT5'};LV2.lastTick=n;FD.err=''}}catch(e){FD.err=e.message}}))}
+async function mtPoll(){const ss=subs().filter(s=>route(s)==='mt5');if(!ss.length||LV2.mb)return;LV2.mb=1;
+  try{await Promise.all(ss.map(async s=>{try{const p=await mtPx(s);if(p>0){const n=Date.now();LV2.tk[s]={p,t:n,at:n,src:'MT5'};LV2.lastTick=n;FD.err='';window.tkmAdd&&tkmAdd(s,p,n)}}catch(e){FD.err=e.message}}))}
   finally{LV2.mb=0}}
 
 /* --- push the live price into the row's data (price + forming candle) and recompute the whole signal --- */
@@ -2153,7 +2155,7 @@ const due=(r,d,st)=>{const s=TFMS[st],now=Date.now(),cl=d.lv?d.lv.t+s:d[d.length
 
 /* --- engine loop: 1 s, runs in the background worker timer so it keeps ticking with the screen off --- */
 let sigT='';
-function bar(){const el=$('#lvBar');if(!el)return;const on=$('#asc').checked,ss=lst().filter(s=>mkt(s).open),live=ss.filter(s=>lvPx(s,15000)).length,
+function bar(){const el=$('#lvBar');if(!el)return;const on=$('#asc').checked,ss=subs().filter(s=>mkt(s).open),live=ss.filter(s=>lvPx(s,15000)).length,
   age=LV2.lastTick?((Date.now()-LV2.lastTick)/1000).toFixed(1)+'s':'–',srcs=[...new Set(Object.values(LV2.tk).filter(k=>Date.now()-k.at<15000).map(k=>k.src))].join(' + ')||'–';
   const hd=!on?'<b class="warn">○ PAUSED · tick "Live auto-scan" to resume</b>':!ss.length?'<b class="warn">○ all markets closed</b>':live?(live===ss.length?'<b class="up">● LIVE</b>':'<b class="warn">● LIVE (partial)</b>'):'<b class="warn">● connecting…</b>';
   el.innerHTML=hd+` · ticks ${live}/${ss.length} open symbols · last tick ${age} ago · feed: ${srcs}`+(LV2.rebuiltAt?` · last recalc ${new Date(LV2.rebuiltAt).toLocaleTimeString()} · ${LV2.recalc} recalcs`:'')+
@@ -2162,9 +2164,9 @@ function loop(){
   try{
     const on=$('#asc').checked;
     if(on){
-      const sg=lst().join(',');if(sg!==sigT){sigT=sg;dvClose();clearTimeout(LV2.rt);LV2.rt=null;LV2.fails=0;dvOpen()}
+      const sg=subs().join(',');if(sg!==sigT){sigT=sg;dvClose();clearTimeout(LV2.rt);LV2.rt=null;LV2.fails=0;dvOpen()}
       if(!LV2.ws&&!LV2.rt)dvOpen();
-      if(LV2.ws&&LV2.open&&Date.now()-LV2.wsAt>20000&&lst().some(s=>route(s)==='dv'&&mkt(s).open)&&Date.now()-Math.max(LV2.lastTick,LV2.wsAt)>25000){dvClose();dvFail()}
+      if(LV2.ws&&LV2.open&&Date.now()-LV2.wsAt>20000&&subs().some(s=>route(s)==='dv'&&mkt(s).open)&&Date.now()-Math.max(LV2.lastTick,LV2.wsAt)>25000){dvClose();dvFail()}
       bnPoll();mtPoll();
       if(!S.scan.length&&!S.scanBusy&&!S.asBusy&&Date.now()-(LV2.t0||(LV2.t0=Date.now()))>1500){LV2.t0=Date.now()+60000;scan()}
       if(S.scan.length&&!S.scanBusy&&S.D){
@@ -2193,12 +2195,142 @@ scan0=async function(){
   await Promise.all([work(),work(),work(),work()]);S.cur=null;
   const top=S.scan.filter(r=>!r.err&&r.sg.entry!=null);
   $('#prog').textContent=S.stop?'stopped':`done · ${top.length} setup(s) · now LIVE`+(useH?'':' (no HTF check)');
-  if(top.length){const b=top.sort((a,b)=>b.sg.score-a.sg.score)[0];log(`Screener ${STYLE[st]}: best ${b.sym} ${b.sg.status} @ ${fmt(b.sg.entry,b.sym)}`);notify(`${b.sym} ${b.sg.status}`)}
+  if(top.length){const b=top.sort((a,b)=>b.sg.score-a.sg.score)[0];log(`Screener ${STYLE[st]}: best ${b.sym} ${b.sg.status} @ ${fmt(b.sg.entry,b.sym)}`);0}
 };
 /* --- UI: status bar, auto-scan ON by default (remembered), faster alert-desk price --- */
 $('#tbl').parentElement.insertAdjacentHTML('beforebegin','<div id="lvBar" class="hint" style="margin:6px 0 8px"></div>');
 {const a=$('#asc');a.checked=store('ascOff')!=='1';a.addEventListener('change',()=>{store('ascOff',a.checked?'0':'1');if(a.checked){S.asNext=0;LV2.t0=0}})}
 bgInterval(loop,1000);setTimeout(loop,300);
+})();
+
+/* ===== READY-ENTRY ALERT ENGINE v3 =====
+   Alerts fire ONLY for a ready, confirmed, non-fake entry (Perfect OB / verified SMC / CRT / BIG MOVE). Never for No trade, Watch or pending rows.
+   Adds 30 s / 1 m / 5 m on every symbol (tick-built candles), debounce, de-duplication, stop-breach cancel. */
+(function(){
+const A_=()=>window._AD, f_=(x,s)=>fmt(x,s);
+const RDW=window.RDW={}, RDY={}, DB={};
+const holdMs=tf=>TFMS[tf]<=6e4?3000:TFMS[tf]<=3e5?4000:TFMS[tf]<=9e5?5000:0;
+window.dbnOK=(k,ms)=>{const n=Date.now(),e=DB[k];if(!e||n-e.last>12000){DB[k]={first:n,last:n};return ms<=0}e.last=n;return n-e.first>=ms};
+const chk=id=>store(id)==='1';window.holdMs=holdMs;window.tickChk=sym=>tickOK(sym);
+const tickOK=sym=>{const r=window.lvRoute?lvRoute(sym):'none';if(r==='none')return true;if(!mkt(sym).open)return false;return !!lvPx(sym,8000)};
+
+/* strict ready gate for SMC / Perfect OB */
+window.rdy=function(o){
+  const {sym,tf,d,A,sg,pb,lv,ht,px}=o,k=sym+'|'+tf,no=w=>{RDW[k]=w;return{ok:false,why:w}};
+  if(!sg||sg.entry==null)return no(sg&&sg.watch?'needs '+(sg.failed||'confirmation'):'no valid zone');
+  if(!/SETUP$/.test(sg.status))return no('no setup');
+  const dist=sg.dist==null?(sg.inZone?0:9):sg.dist;
+  if(!sg.verified)return no('unverified: '+sg.failed);
+  if(lv===false||(lv!==undefined&&!lv))return no('stale candles / market closed');
+  if(!tickOK(sym))return no('no live tick');
+  if(!pobGate(pb))return no(pb?'Perfect OB '+pb.score+'/5 (gate)':'no order block');
+  if(ht!==sg.dir)return no('HTF not aligned');
+  try{const L=d.length,e=envChk(d,A,L);if(e&&e.er<.2)return no('choppy market')}catch(e){}
+  if(sg.cr>.12)return no('costs too high');
+  if((sg.rr1!=null?sg.rr1:sg.rr)<1.5)return no('R:R below 1.5');
+  if(!(sg.inZone||dist<=.6))return no('wait: '+dist.toFixed(1)+' ATR from zone');
+  const conf=!!(sg.react||sg.conf===true);
+  if(!conf&&!(chk('rdTap')&&sg.inZone&&pb&&pb.score===5))return no(sg.inZone?'in zone, wait confirmation candle':'wait zone tap');
+  RDW[k]='';
+  const nm=sym.replace('/',' '),dr=sg.dir>0?'BUY':'SELL',perf=pb&&pb.score===5,age=(()=>{const q=window.LV2&&LV2.tk[sym];return q?((Date.now()-q.at)/1000).toFixed(0)+'s':'n/a'})();
+  return{ok:true,kind:'SMC',label:perf?'PERFECT OB 5/5':'SMC',entry:sg.entry,sl:sg.sl,tp1:sg.tp1,
+    txt:`${nm} ${tf} ${dr} ENTRY READY · ${perf?'PERFECT OB 5/5':'verified SMC'}${pb&&pb.crt?' + CRT':''}. ${conf?(sg.react?'Reaction candle closed out of the zone':'LTF CHoCH printed'):'Zone tap (Perfect OB)'} · HTF ${HTF[tf]||''} aligned · tick ${age}. Entry ${f_(sg.entry,sym)}, SL ${f_(sg.sl,sym)}, TP1 ${f_(sg.tp1,sym)}${sg.tp2?', TP2 '+f_(sg.tp2,sym):''}.`}};
+
+/* BIG MOVE: sustained institutional displacement + activity surge + structure break, entry on the pullback with reaction */
+const WB={'30s':8,'1m':8,'5m':6,'15m':6};
+window.bigMove=function(d,A,sym,tf,ht,px){
+  const k=sym+'|'+tf+'|B',no=w=>{if(!RDW[sym+'|'+tf])RDW[sym+'|'+tf]='';RDW[k]=w;return null};
+  try{
+    const L=d.length;if(L<60)return null;const a=A.atr[L-1],w=WB[tf]||5;if(!(a>0))return null;
+    for(let p=1;p<=5;p++){
+      const e=L-p,s=e-w;if(s<22)continue;const seg=d.slice(s,e),pri=d.slice(s-20,s),net=seg[w-1].c-seg[0].o,dir=net>0?1:-1;
+      if(Math.abs(net)<2.8*a||Math.abs(net)>7.5*a)continue;
+      if(seg.filter(c=>dir>0?c.c>c.o:c.c<c.o).length<w-2)continue;
+      const path=seg.reduce((x,c)=>x+(c.h-c.l),0);if(Math.abs(net)/path<.5)continue;
+      const top=dir>0?Math.max(...seg.map(c=>c.h)):Math.min(...seg.map(c=>c.l)),org=dir>0?Math.min(...seg.map(c=>c.l)):Math.max(...seg.map(c=>c.h));
+      if(dir>0?top<=Math.max(...pri.map(c=>c.h)):top>=Math.min(...pri.map(c=>c.l)))continue;           /* no structure break */
+      const vs=seg.reduce((x,c)=>x+(c.v||0),0)/w,vp=pri.reduce((x,c)=>x+(c.v||0),0)/20,rs=path/w,rp=pri.reduce((x,c)=>x+(c.h-c.l),0)/20;
+      const surge=vp>0&&vs>0?vs/vp:rs/rp;if(surge<(vp>0&&vs>0?1.6:1.5))continue;
+      const imp=Math.abs(top-org),z1=top-dir*.382*imp,z2=top-dir*.618*imp,entry=top-dir*.5*imp,sl=top-dir*.786*imp-dir*.15*a,tp1=top,tp2=top+dir*.272*imp;
+      const risk=Math.abs(entry-sl),rr=Math.abs(tp2-entry)/risk;if(rr<2)continue;
+      if(ht===-dir)return no('big move vs HTF');
+      const pull=d.slice(e,L);if(dir>0?Math.min(...pull.map(c=>c.l))<=sl:Math.max(...pull.map(c=>c.h))>=sl)continue;
+      const inz=dir>0?(px<=z1+.1*a&&px>=z2-.1*a):(px>=z1-.1*a&&px<=z2+.1*a);
+      if(!inz)return no('big move '+(dir>0?'UP':'DOWN')+', waiting pullback to '+f_(z1,sym)+'–'+f_(z2,sym));
+      const c1=d[L-1],c0=d[L-2],react=dir>0?(c1.c>c1.o&&c1.c>c0.c):(c1.c<c1.o&&c1.c<c0.c);
+      if(!react)return no('big move, in pullback zone, wait reaction candle');
+      if(!tickOK(sym))return no('no live tick');
+      if(INFO(sym,px).spr*1.2/risk>.15)return no('big move, costs too high');
+      RDW[sym+'|'+tf]='';
+      const nm=sym.replace('/',' '),dr=dir>0?'BUY':'SELL';
+      return{ok:true,dir,kind:'BIG MOVE',key:`${sym}|${tf}|BIG|${dir}|${f_(top,sym)}`,entry,sl,tp1,
+        txt:`${nm} ${tf} ${dr} BIG MOVE ENTRY READY · institutional displacement ${(Math.abs(net)/a).toFixed(1)} ATR in ${w} bars, activity ${surge.toFixed(1)}x, structure broken. Pullback entry ${f_(entry,sym)} (zone ${f_(z1,sym)}–${f_(z2,sym)}), reaction candle confirmed. SL ${f_(sl,sym)}, TP1 ${f_(tp1,sym)}, TP2 ${f_(tp2,sym)} (${rr.toFixed(1)}R).`}
+    }
+  }catch(e){}
+  return null};
+
+/* registry: cancel an alerted setup if price breaks its stop (works for Desk + screener alerts) */
+window.rdyReg=(h,sym,tf)=>{if(h&&h.sl!=null&&h.entry!=null)RDY[h.key]={sym,tf,dir:h.dir,sl:h.sl,tp1:h.tp1,entry:h.entry,at:Date.now(),kind:h.kind}};
+function cancels(){const n=Date.now();for(const k in RDY){const e=RDY[k];
+  if(n-e.at>Math.max(36e5,40*TFMS[e.tf])){delete RDY[k];continue}
+  const p=lvPx(e.sym,20000);if(!p)continue;
+  if(e.dir>0?p>=e.tp1:p<=e.tp1){delete RDY[k];continue}
+  if(e.dir>0?p<=e.sl:p>=e.sl){delete RDY[k];try{tfAlert(e.tf,-e.dir,'CANCEL',`${e.sym.replace('/',' ')} ${e.tf} ${e.dir>0?'BUY':'SELL'} ${e.kind} CANCELLED. Price broke the stop ${f_(e.sl,e.sym)}. Do not enter; protect any open trade.`)}catch(x){}}}}
+setInterval(cancels,1000);setInterval(()=>{const n=Date.now();for(const k in DB)if(n-DB[k].last>60000)delete DB[k]},30000);
+
+/* screener alerts: replace chg (it used to notify on EVERY status change, including No trade) */
+chg=function(r,b){try{
+  const st=$('#scStyle').value,d=S.D&&S.D[r.sym],g=r.sg,AD=A_();if(!d||!g||!AD||r.err)return;
+  const ht=r.h,hits=[],pre=g.entry!=null&&/SETUP$/.test(g.status)&&g.verified;let pb=null,gt={ok:false};
+  if(pre){try{pb=pobEval(d,r.A,g,null,r.sym)}catch(e){}gt=rdy({sym:r.sym,tf:st,d,A:r.A,sg:g,pb,lv:undefined,ht,px:d.px})}else RDW[r.sym+'|'+st]=g.watch?'needs '+(g.failed||'confirmation'):'no valid setup';
+  if(gt.ok)hits.push({kind:gt.kind,label:gt.label,dir:g.dir,key:`${r.sym}|${st}|SMC|${g.dir}|${f_(g.entry,r.sym)}`,txt:gt.txt,entry:gt.entry,sl:gt.sl,tp1:gt.tp1});
+  if(window.rdBigOn&&rdBigOn()){const bm=bigMove(d,r.A,r.sym,st,ht,d.px);if(bm&&bm.ok)hits.push(bm)}
+  hits.forEach(h=>{if(AD.ts[h.key]||!dbnOK(h.key,holdMs(st)))return;AD.ts[h.key]=Date.now();try{svT()}catch(e){}
+    tfAlert(st,h.dir,h.kind,h.txt);rdyReg(h,r.sym,st);log('READY '+st+' '+h.txt)})
+}catch(e){}};
+
+/* ===== tick-built candles for every symbol: 30s / 15s / 5s (Deriv ticks_history seed + live ticks, Binance aggTrade, MT5 poll) ===== */
+const TKM={},CC={};
+const store_=s=>TKM[s]||(TKM[s]={t:[],seeded:false,seeding:false});
+window.tkmAdd=(sym,p,t)=>{const o=store_(sym),n=o.t.length;if(n&&t<o.t[n-1][0])return;o.t.push([t,p]);if(o.t.length>40000)o.t.splice(0,4000)};
+async function tkmSeed(sym){const o=store_(sym);if(o.seeded||o.seeding)return;o.seeding=true;
+  try{const rt=lvRoute(sym);let pre=[];
+    if(rt==='dv'){for(const u of DVE){try{const j=await dvReq(u,{ticks_history:dvSym(sym),end:'latest',count:5000,style:'ticks'});const h=j.history||{};pre=(h.times||[]).map((t,i)=>[t*1000,+h.prices[i]]);if(pre.length)break}catch(e){}}}
+    else if(rt==='bn'){try{pre=(await _J(`https://fapi.binance.com/fapi/v1/aggTrades?symbol=${BN.m(sym)}&limit=1000`)).map(x=>[x.T,+x.p])}catch(e){}}
+    const first=o.t.length?o.t[0][0]:Infinity;o.t=pre.filter(x=>x[0]<first).concat(o.t);o.seeded=pre.length>0||o.t.length>0}
+  finally{o.seeding=false}}
+function tkmBars(sym,tf){const o=TKM[sym];if(!o||!o.t.length)return null;const ms=TFMS[tf],bars=[];let cur=null;
+  for(const [t,p] of o.t){const b=Math.floor(t/ms)*ms;if(!cur||cur.t!==b){if(cur)bars.push(cur);cur={t:b,o:p,h:p,l:p,c:p,v:1}}else{if(p>cur.h)cur.h=p;if(p<cur.l)cur.l=p;cur.c=p;cur.v++}}
+  return{bars,cur}}
+window.tkmData=async function(sym,tf){sym=sym.toUpperCase();window.lvWatch&&lvWatch(sym);if(lvRoute(sym)==='none')throw new Error('No tick feed for '+sym);
+  const o=store_(sym);if(!o.seeded)tkmSeed(sym);
+  const c=CC[sym+'|'+tf];if(c&&Date.now()-c.at<900)return c.d;
+  const r=tkmBars(sym,tf);if(!r||r.bars.length<60)throw new Error('Collecting ticks '+(r?r.bars.length:0)+'/60 ('+tf+' bars)');
+  const d=r.bars;d.lv=r.cur?{...r.cur}:null;d.px=r.cur?r.cur.c:d[d.length-1].c;d.stale=false;d.src='Ticks';CC[sym+'|'+tf]={d,at:Date.now()};return d};
+
+/* candle cache for free feeds: no network while the bar is still forming (live tick updates the forming candle) */
+const TC={};
+{const _td3=td;
+ td=async function(sym,tf,force,abort){
+  const S0=(sym||'').toUpperCase(),T=TFMS[tf],cs=($('#sym').value||'').trim().toUpperCase(),isChart=S0===cs&&$('#tf').value===tf;
+  if(!isChart){
+    if(T<6e4){if(lvRoute(S0)!=='none')return tkmData(S0,tf)}
+    else if(freeSym(S0)&&T<=864e5){const k=S0+'|'+tf,e=TC[k],n=Date.now(),max=T<=3e5?60000:300000;
+      if(e&&n-e.at<max&&e.d.lv&&n<e.d.lv.t+T+2500){const p=lvPx(S0,10000);if(p){e.d.px=p;const l=e.d.lv;l.c=p;if(p>l.h)l.h=p;if(p<l.l)l.l=p}return e.d}
+      const d=await _td3(sym,tf,true,abort);TC[k]={d,at:n};return d}}
+  return _td3(sym,tf,force,abort)}}
+
+const TD_INT={'30s':3000,'1m':5000,'5m':10000},TDU={};window.tfDue=(sym,tf)=>{const k=sym+'|'+tf,n=Date.now();if(n-(TDU[k]||0)<(TD_INT[tf]||30000))return false;TDU[k]=n;return true};
+/* UI: switches */
+$('#adTfs').insertAdjacentHTML('afterend',`<div id="rdOpt" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px;font-size:12px">
+ <label class="chk"><input type="checkbox" id="rdBig" checked> Big-move alerts</label>
+ <label class="chk"><input type="checkbox" id="rdTap"> Perfect-OB zone tap (before confirmation)</label>
+ <label class="chk"><input type="checkbox" id="rdPre"> Pre-alerts (approaching zone)</label>
+ <label class="chk"><input type="checkbox" id="rdMet"> Gold/Silver below 15m</label></div>
+ <div class="hint" style="margin-top:4px">Alerts fire only for a ready, confirmed entry: verified, HTF aligned, trending, costs ok, R:R ≥ 1.5, live tick, reaction candle or LTF CHoCH. No trade / Watch / pending never alert. A cancel alert fires if price breaks the stop.</div>`);
+['rdBig','rdTap','rdPre','rdMet'].forEach(id=>{const e=$('#'+id);if(id==='rdBig')e.checked=store(id)!=='0';else e.checked=store(id)==='1';e.addEventListener('change',()=>store(id,e.checked?(id==='rdBig'?'1':'1'):'0'))});
+window.LTFMET=()=>store('rdMet')==='1';
+window.rdBigOn=()=>store('rdBig')!=='0';
 })();
 </script>
 </body>
