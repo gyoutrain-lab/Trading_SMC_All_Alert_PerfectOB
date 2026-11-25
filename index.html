@@ -2108,7 +2108,7 @@ const route=s=>mtOn(s)?'mt5':BN.ok(s)?'bn':dvSym(s)?'dv':'none';
 const freeSym=s=>!TDK()||mtOn(s)||BN.ok(s)||FD.mode==='dv';
 window.lvRoute=route;window.freeSym=freeSym;window.lvWatch=s=>{s=(s||'').toUpperCase();(LV2.extra=LV2.extra||new Set()).add(s)};
 window.lvPx=(s,max)=>{const k=LV2.tk[(s||'').toUpperCase()];return k&&Date.now()-k.at<(max||15000)?k.p:0};
-window.lvCell=s=>{if(!mkt(s).open)return'<span class="warn">CLOSED</span>';const k=LV2.tk[s];if(!k)return'<span class="warn">no tick</span>';const a=(Date.now()-k.at)/1000;
+window.lvCell=s=>{if(!mkt(s).open)return'<span class="warn">CLOSED</span>';const k=LV2.tk[s];if(!k)return route(s)==='none'?'<span class="warn">candle feed</span>':'<span class="warn">no tick</span>';const a=(Date.now()-k.at)/1000;
   return fmt(k.p,s)+'<br><small class="'+(a>15?'warn':'up')+'">'+(a<1.5?'live':a.toFixed(0)+'s ago')+' · '+k.src+'</small>'};
 
 /* --- tick source 1: Deriv WebSocket (keyless, forex + metals, pushes every tick) --- */
@@ -2142,8 +2142,10 @@ function applyTick(sym,p,st){const d=S.D&&S.D[sym];if(!d||!d.length)return false
   if(d.lv&&now<d.lv.t+s){const l=d.lv;l.c=p;if(p>l.h)l.h=p;if(p<l.l)l.l=p}
   else if(!d.lv){const b=Math.floor(now/s)*s;if(b===d[d.length-1].t+s)d.lv={t:b,o:p,h:p,l:p,c:p,v:0}}
   return true}
-function rebuild(r,st,n){const b=sk(r);try{Object.assign(r,sbuild(r.sym,r.h,st,n))}catch(e){S.cur=null;return false}
-  LV2.recalc++;LV2.rebuiltAt=Date.now();chg(r,b);return true}
+const sigOf=r=>r.sg.status+'|'+r.sg.entry+'|'+r.sg.inZone+'|'+Math.round((r.sg.dist||0)*10)+'|'+(r.h==null?'':r.h);
+function rebuild(r,st,n){const b=sk(r),d=S.D[r.sym],key=d.length+'|'+d[d.length-1].t,os=r.sg?sigOf(r):'';
+  try{if(r.A&&r._k===key){S.cur=r.sym;try{r.sg=buildSignal(d,r.A,r.h,d.px)}finally{S.cur=null}}else{Object.assign(r,sbuild(r.sym,r.h,st,n));r._k=key}}catch(e){S.cur=null;return false}
+  LV2.recalc++;LV2.rebuiltAt=Date.now();chg(r,b);r._chg=os!==sigOf(r);return true}
 async function refresh(r,st,n,useH){if(LV2.rf[r.sym])return;LV2.rf[r.sym]=1;r.rfAt=Date.now();
   try{const d=await td(r.sym,st,freeSym(r.sym));
     if(d&&d.length){S.D[r.sym]=d;
@@ -2171,15 +2173,16 @@ function loop(){
       bnPoll();mtPoll();
       if(!S.scan.length&&!S.scanBusy&&!S.asBusy&&Date.now()-(LV2.t0||(LV2.t0=Date.now()))>1500){LV2.t0=Date.now()+60000;scan()}
       if(S.scan.length&&!S.scanBusy&&S.D){
-        const st=$('#scStyle').value,n=clamp(+$('#swl').value||5,2,15),useH=$('#scHtf').checked,now=Date.now(),ch=[];
+        const st=$('#scStyle').value,n=clamp(+$('#swl').value||5,2,15),useH=$('#scHtf').checked,now=Date.now(),ch=[];let nb=0;
         for(const r of S.scan){if(r.err||!S.D[r.sym]||!mkt(r.sym).open)continue;const d=S.D[r.sym];if(r.rfAt==null)r.rfAt=now;
           const k=LV2.tk[r.sym];
-          if(k&&now-k.at<15000&&k.p!==d.px&&now-(r.rbAt||0)>=1000){if(applyTick(r.sym,k.p,st)&&rebuild(r,st,n)){r.rbAt=now;r.tkAt=k.at;ch.push(r.sym)}}
+          if(k&&now-k.at<15000&&k.p!==d.px&&nb<2){const near=r.sg&&r.sg.entry!=null&&(r.sg.inZone||(r.sg.dist!=null&&r.sg.dist<=2)),gap=near?1000:4000,atr=(r.A&&r.A.atr&&r.A.atr[r.A.atr.length-1])||0;
+            if(now-(r.rbAt||0)>=gap&&(Math.abs(k.p-d.px)>=.03*atr||now-(r.rbAt||0)>=15000)){nb++;if(applyTick(r.sym,k.p,st)&&rebuild(r,st,n)){r.rbAt=now;r.tkAt=k.at;if(r._chg)ch.push(r.sym)}}}
           if(Object.values(LV2.rf).filter(Boolean).length<3&&due(r,d,st))refresh(r,st,n,useH)}
         if(ch.length||LV2.dirty){LV2.dirty=false;renderScan();ch.forEach(s=>{const tr=document.querySelector('#tbl tr[data-s="'+(window.CSS&&CSS.escape?CSS.escape(s):s)+'"]');if(tr){tr.classList.add('lvf');setTimeout(()=>tr.classList.remove('lvf'),800)}})}
       }
     }
-    document.querySelectorAll('#tbl td[data-lv]').forEach(td=>{td.innerHTML=lvCell(td.dataset.lv)});
+    document.querySelectorAll('#tbl td[data-lv]').forEach(td=>{const h=lvCell(td.dataset.lv);if(td._h!==h){td.innerHTML=h;td._h=h}});
     bar();
   }catch(e){}
 }
@@ -2350,6 +2353,25 @@ $('#adCx').addEventListener('click',async()=>{const o={};keys.forEach(k=>o[k]=st
 $('#adCi').addEventListener('click',()=>{const c=prompt('Paste the settings code from your desktop:');if(!c)return;
   try{const o=JSON.parse(decodeURIComponent(escape(atob(c.trim()))));keys.forEach(k=>{if(typeof o[k]==='string'){store(k,o[k]);const e=$('#'+k);if(e)e.value=o[k]}});PRO.status();alert('Settings imported.')}catch(e){alert('That code is not valid.')}});
 setTimeout(()=>{try{PRO.status()}catch(e){}},500);
+})();
+
+/* ===== SCREENER RESPONSIVENESS + SYNC ===== */
+(function(){
+let ptr=0,pend=0;
+addEventListener('pointerdown',e=>{if(e.target.closest&&e.target.closest('#tbl'))ptr=Date.now()},true);
+const wl=()=>new Set(($('#wl').value||'').split(/[\s,]+/).filter(Boolean).map(s=>s.toUpperCase()));
+const _rs=renderScan;
+renderScan=function(){
+  /* never replace the rows between mouse-down and mouse-up: that is what swallowed the clicks */
+  if(Date.now()-ptr<450){if(!pend){pend=1;setTimeout(()=>{pend=0;renderScan()},480)}return}
+  try{if(S.scan&&S.scan.length){const L=wl();S.scan=S.scan.filter(r=>L.has(r.sym))}}catch(e){}
+  _rs();document.querySelectorAll('#tbl tbody tr').forEach(tr=>{tr.onclick=null})};
+$('#tbl').addEventListener('click',e=>{const tr=e.target.closest('tr[data-s]');if(!tr)return;
+  $('#sym').value=tr.dataset.s;$('#tf').value=$('#scStyle').value;S.mode='live';S.lastKey=null;S.offset=0;load()});
+/* changing the preset / watchlist: stop the running scan, drop old rows, rescan the new list */
+const reset=()=>{S.stop=true;S.scan=[];S.D={};try{renderScan()}catch(e){}
+  let t=0;const iv=setInterval(()=>{if(!S.scanBusy||++t>200){clearInterval(iv);if(!S.scanBusy){S.stop=false;if($('#asc').checked)scan()}}},100)};
+$('#pre').addEventListener('change',reset);$('#wl').addEventListener('change',reset);
 })();
 </script>
 </body>
