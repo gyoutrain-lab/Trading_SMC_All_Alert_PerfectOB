@@ -377,9 +377,10 @@ const PRO=(()=>{
    new Notification(title,{body,requireInteraction:true})}catch(e){try{new Notification(title,{body})}catch(x){}}};
  P.out=(title,msg,pri,tags)=>{P.hist(title,msg);P.note(title,msg);
    const nt=((document.getElementById('adNt')||{}).value||'').trim();
-   if(nt){const send=n=>fetch('https://ntfy.sh/'+encodeURIComponent(nt),{method:'POST',body:msg,headers:{Title:title,Priority:String(pri||4),Tags:tags||'eyes'}}).catch(()=>{if(n)setTimeout(()=>send(n-1),4000)});send(2)}
+   const rec=(ch,ok,info)=>{window.PUSHST=window.PUSHST||{};PUSHST[ch]={ok,info,at:Date.now()};try{P.status&&P.status()}catch(e){}};
+   if(nt){const send=n=>fetch('https://ntfy.sh/'+encodeURIComponent(nt),{method:'POST',body:msg,headers:{Title:title,Priority:String(pri||4),Tags:tags||'eyes'}}).then(r=>{rec('ntfy',r.ok,'HTTP '+r.status);if(!r.ok&&n)setTimeout(()=>send(n-1),3000)}).catch(()=>{rec('ntfy',false,'blocked or offline');if(n)setTimeout(()=>send(n-1),3000)});send(3)}
    const tk=store('adTg'),ci=store('adTc');
-   if(tk&&ci){const tg=n=>fetch('https://api.telegram.org/bot'+encodeURIComponent(tk)+'/sendMessage?chat_id='+encodeURIComponent(ci)+'&text='+encodeURIComponent(title+'\n'+msg)).catch(()=>{if(n)setTimeout(()=>tg(n-1),4000)});tg(2)}};
+   if(tk&&ci){const tg=n=>fetch('https://api.telegram.org/bot'+encodeURIComponent(tk)+'/sendMessage?chat_id='+encodeURIComponent(ci)+'&text='+encodeURIComponent(title+'\n'+msg)).then(r=>r.json()).then(j=>{rec('Telegram',!!j.ok,j.ok?'sent':String(j.description||'error').slice(0,60));if(!j.ok&&n&&!/chat not found|Unauthorized|bot token/i.test(j.description||''))setTimeout(()=>tg(n-1),3000)}).catch(()=>{rec('Telegram',false,'blocked or offline');if(n)setTimeout(()=>tg(n-1),3000)});tg(3)}};
  /* timers that keep ticking when the tab is hidden (a Web Worker is not throttled like setInterval) */
  let wk=null,seq=0;const map={},fbs={};
  try{wk=new Worker(URL.createObjectURL(new Blob(['const T={};onmessage=e=>{const d=e.data;clearInterval(T[d.i]);if(d.c==="s")T[d.i]=setInterval(()=>postMessage(d.i),d.ms)}'],{type:'text/javascript'})));wk.onmessage=e=>{const f=map[e.data];if(f)try{f()}catch(x){}};wk.onerror=()=>{}}catch(e){wk=null}
@@ -1671,7 +1672,7 @@ $('#adTt').addEventListener('click',e=>{const tf=e.target.dataset.tt;if(!tf)retu
 function tfAlert(tf,dir,kind,msg){if(PRO.snoozed()){PRO.hist('SMC '+tf+' READY '+kind+' (snoozed)',msg);return}
   tfBeep(tf,dir);
   try{speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(msg))}catch(e){}
-  pushOut('SMC '+tf+' READY '+kind,msg,4,'eyes');
+  pushOut('SMC '+tf+' READY '+kind,msg,kind==='CANCEL'?5:5,kind==='CANCEL'?'warning':'rotating_light');
   const w=$('#adWa'),s=$('#adSms');w.href='https://wa.me/'+wa()+'?text='+encodeURIComponent(msg);s.href='sms:+'+wa()+'?body='+encodeURIComponent(msg);w.style.display=s.style.display='';
   log('READY '+tf+' '+kind+': '+msg)}
 window.tfAlert=tfAlert;window.svT=svT;const FXP=['XAU/USD','XAG/USD','EUR/USD','GBP/USD','USD/JPY','AUD/USD','USD/CAD','USD/CHF','NZD/USD','EUR/JPY','GBP/JPY','EUR/GBP','AUD/JPY','EUR/AUD'];
@@ -1780,7 +1781,7 @@ PRO.every(()=>{if(LV.key&&LV.txt.indexOf('WebSocket')>=0&&Date.now()-LV.last>300
   <div class="kv"><div>Alert volume</div><div><input id="adVol" type="range" min="0" max="100" style="width:140px;min-height:0"></div>
   <div>Telegram bot token</div><div><input id="adTg" type="password" style="width:140px" placeholder="optional"></div>
   <div>Telegram chat id</div><div><input id="adTc" style="width:140px" placeholder="optional"></div></div>
-  <div style="margin:8px 0;display:flex;gap:6px;flex-wrap:wrap"><button id="adSnz">Snooze 15 min</button><button id="adTp">Test push channels</button><button id="adHc">Clear history</button></div>
+  <div style="margin:8px 0;display:flex;gap:6px;flex-wrap:wrap"><button id="adSnz">Snooze 15 min</button><button id="adTp">Test push channels</button><button id="adHc">Clear history</button><button id="adCx">Copy settings code</button><button id="adCi">Paste settings code</button></div><div id="adPhone" class="hint" style="margin-top:6px"></div>
   <div class="ckh">Alert history · latest first (kept in this browser)</div><div id="adHist" class="zl"></div>
   <div class="hint">The engine auto-resumes every time the page opens and ticks from a background worker, so screen-off throttling does not stop the scan. Browsers only allow sound after one tap: the status line says when that tap is still needed. Install as an app (Add to Home screen) for the most reliable notifications. Telegram: create a bot with @BotFather, paste its token and your chat id; the token stays only in this browser.</div></div>`);
   const g=(k,d)=>{const v=store(k);return v==null?d:v};
@@ -1798,8 +1799,8 @@ PRO.every(()=>{if(LV.key&&LV.txt.indexOf('WebSocket')>=0&&Date.now()-LV.last>300
     let t,c;
     if(!A.on){t='ALERTS OFF';c=''}else if(sn){t='SNOOZED until '+new Date(+store('adSnz')).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});c='warn'}
     else if(!armed){t='ENGINE RUNNING · TAP THE SCREEN ONCE TO ARM SOUND';c='warn'}else{t='ALERTS ARMED';c='up'}
-    el.className='vd '+c;el.innerHTML=t+'<small>Last scan '+(A.last?new Date(A.last).toLocaleTimeString():'–')+' · channels: '+(ch.join(', ')||'sound only')+' · live feed: '+esc(LV.txt)+'</small>';
-    const b=$('#adSnz');if(b)b.textContent=sn?'Cancel snooze':'Snooze 15 min'};
+    el.className='vd '+c;el.innerHTML=t+'<small>Last scan '+(A.last?new Date(A.last).toLocaleTimeString():'–')+' · channels: '+(ch.join(', ')||'sound only')+' · live feed: '+esc(LV.txt)+(window.pushInfo?pushInfo():'')+'</small>';
+    const b=$('#adSnz');if(b)b.textContent=sn?'Cancel snooze':'Snooze 15 min';window.phonePanel&&phonePanel()};
   PRO.renderHist();PRO.status();
   ['pointerdown','keydown','touchstart'].forEach(ev=>addEventListener(ev,()=>PRO.unlock(),{passive:true}));
   try{if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol))navigator.serviceWorker.register('sw.js').catch(()=>{})}catch(e){}
@@ -2331,6 +2332,24 @@ $('#adTfs').insertAdjacentHTML('afterend',`<div id="rdOpt" style="display:flex;g
 ['rdBig','rdTap','rdPre','rdMet'].forEach(id=>{const e=$('#'+id);if(id==='rdBig')e.checked=store(id)!=='0';else e.checked=store(id)==='1';e.addEventListener('change',()=>store(id,e.checked?(id==='rdBig'?'1':'1'):'0'))});
 window.LTFMET=()=>store('rdMet')==='1';
 window.rdBigOn=()=>store('rdBig')!=='0';
+})();
+
+/* ===== PHONE DELIVERY: honest status, per-channel result, settings transfer ===== */
+(function(){
+const mob=/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+window.pushInfo=()=>{const s=window.PUSHST;if(!s)return '';return ' · push: '+Object.keys(s).map(k=>`<span class="${s[k].ok?'up':'dn'}">${k} ${s[k].ok?'OK':'FAILED'} (${esc(s[k].info)}) ${new Date(s[k].at).toLocaleTimeString()}</span>`).join(', ')};
+window.phonePanel=()=>{const el=$('#adPhone');if(!el)return;const nt=($('#adNt').value||'').trim(),tg=store('adTg')&&store('adTc'),h=[];
+  if(!nt&&!tg)h.push('<b class="dn">No phone channel is set on THIS device.</b> Topic and Telegram are saved per device and browser, so what you typed on the desktop is not on the phone. Fill the ntfy topic (or Telegram) here, or use Copy / Paste settings code to move them.');
+  if(mob)h.push('<b class="warn">Phone browser:</b> a page is frozen when the screen is off and Android blocks in-page notifications without a service worker, so this tab cannot alert you in the background. Keep the analyzer running on the desktop (screen on, tab open) and let it push to this phone: install the <b>ntfy</b> app'+(nt?' and subscribe to topic <b>'+esc(nt)+'</b>':'')+', or use Telegram.');
+  else if(nt)h.push('Phone setup: install the <b>ntfy</b> app, subscribe to topic <b>'+esc(nt)+'</b> (same spelling), allow notifications and battery "unrestricted" for it, then press Test push channels. Use a long random topic: anyone who knows it can read the alerts.');
+  else if(tg)h.push('Telegram: open your bot in the phone app and press Start once, otherwise the bot cannot message you.');
+  el.innerHTML=h.join('<br>')};
+const keys=['adNt','adTg','adTc','adPh'];
+$('#adCx').addEventListener('click',async()=>{const o={};keys.forEach(k=>o[k]=store(k)||'');const code=btoa(unescape(encodeURIComponent(JSON.stringify(o))));
+  try{await navigator.clipboard.writeText(code);alert('Settings code copied. On the phone press Paste settings code and paste it. It contains your push topic and Telegram token: keep it private.')}catch(e){prompt('Copy this settings code:',code)}});
+$('#adCi').addEventListener('click',()=>{const c=prompt('Paste the settings code from your desktop:');if(!c)return;
+  try{const o=JSON.parse(decodeURIComponent(escape(atob(c.trim()))));keys.forEach(k=>{if(typeof o[k]==='string'){store(k,o[k]);const e=$('#'+k);if(e)e.value=o[k]}});PRO.status();alert('Settings imported.')}catch(e){alert('That code is not valid.')}});
+setTimeout(()=>{try{PRO.status()}catch(e){}},500);
 })();
 </script>
 </body>
